@@ -66,29 +66,47 @@ router.post('/register', async (req, res) => {
 // POST /auth/login
 router.post('/login', async (req, res) => {
   try {
+    console.log('🔐 LOGIN - START');
+    console.log('📱 Mobile:', req.body.mobile);
+    console.log('🔑 Password:', req.body.password ? '***' : 'empty');
+    
     const { mobile, password } = req.body;
 
     // Validation
     if (!mobile || !password) {
+      console.log('❌ Missing credentials:', { mobile: !!mobile, password: !!password });
       return res.status(400).json({ message: 'Mobile and password are required' });
     }
 
     // Find user by mobile
+    console.log('🔍 Searching for user with mobile:', mobile);
     const user = await User.findOne({ mobile });
+    
     if (!user) {
+      console.log('❌ User not found for mobile:', mobile);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
+    
+    console.log('✅ User found:', { id: user._id, name: user.name });
 
     // Check password
+    console.log('🔐 Verifying password...');
     const isPasswordValid = await user.comparePassword(password);
+    
     if (!isPasswordValid) {
+      console.log('❌ Invalid password for user:', mobile);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
+    
+    console.log('✅ Password verified successfully');
 
     // Generate token
+    console.log('🎫 Generating JWT token...');
     const token = generateToken(user._id);
+    
+    console.log('✅ JWT token generated');
 
-    res.json({
+    const response = {
       message: 'Login successful',
       token,
       user: {
@@ -97,9 +115,18 @@ router.post('/login', async (req, res) => {
         mobile: user.mobile,
         avatar: user.avatar || user.getInitials()
       }
+    };
+    
+    console.log('📦 LOGIN RESPONSE:', { 
+      message: response.message, 
+      token: token ? '***' : 'empty',
+      user: response.user 
     });
+    console.log('✅ LOGIN - COMPLETE');
+    
+    res.json(response);
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('❌ LOGIN - ERROR:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 });
