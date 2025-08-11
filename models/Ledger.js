@@ -47,9 +47,12 @@ const ledgerSchema = new mongoose.Schema({
   },
   user2: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
+    ref: 'User'
+  }, // Can be null for unregistered users
+  user2Mobile: {
+    type: String,
+    match: /^[6-9]\d{9}$/ // Indian mobile number format
+  }, // Store mobile for unregistered user2
   transactions: [transactionSchema],
   balance: {
     type: Number,
@@ -65,7 +68,11 @@ const ledgerSchema = new mongoose.Schema({
 });
 
 // Index for efficient queries
-ledgerSchema.index({ user1: 1, user2: 1 }, { unique: true });
+ledgerSchema.index(
+  { user1: 1, user2: 1, user2Mobile: 1 },
+  { unique: true }
+);
+
 
 // Method to calculate balance (legacy - kept for compatibility)
 ledgerSchema.methods.calculateBalance = function() {

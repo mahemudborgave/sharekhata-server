@@ -28,12 +28,14 @@ router.get('/:id', verifyLedgerAccess, async (req, res) => {
 
     // Populate user details
     await ledger.populate('user1', 'name mobile avatar');
-    await ledger.populate('user2', 'name mobile avatar');
+    if (ledger.user2) {
+      await ledger.populate('user2', 'name mobile avatar');
+    }
     await ledger.populate('transactions.addedBy', 'name mobile avatar');
 
     console.log('👥 POPULATED USERS:', {
       user1: { id: ledger.user1._id, name: ledger.user1.name, mobile: ledger.user1.mobile },
-      user2: { id: ledger.user2._id, name: ledger.user2.name, mobile: ledger.user2.mobile }
+      user2: ledger.user2 ? { id: ledger.user2._id, name: ledger.user2.name, mobile: ledger.user2.mobile } : null
     });
 
     // Get the other user (friend)
@@ -42,13 +44,50 @@ router.get('/:id', verifyLedgerAccess, async (req, res) => {
     console.log('  Current User Mobile:', currentUserMobile);
     console.log('  User1 ID:', ledger.user1._id);
     console.log('  User1 Mobile:', ledger.user1.mobile);
-    console.log('  User2 ID:', ledger.user2._id);
-    console.log('  User2 Mobile:', ledger.user2.mobile);
+    console.log('  User2 ID:', ledger.user2 ? ledger.user2._id : 'null');
+    console.log('  User2 Mobile:', ledger.user2 ? ledger.user2.mobile : 'null');
     console.log('  Current User equals User1?', ledger.user1.equals(currentUserId));
-    console.log('  Current User equals User2?', ledger.user2.equals(currentUserId));
+    console.log('  Current User equals User2?', ledger.user2 ? ledger.user2.equals(currentUserId) : false);
     
-    const otherUser = ledger.user1.equals(currentUserId) ? ledger.user2 : ledger.user1;
-    console.log('👥 FRIEND SELECTED:', { id: otherUser._id, name: otherUser.name, mobile: otherUser.mobile });
+    // Handle case where user2 might be null (pending friendship)
+    let otherUser;
+    if (ledger.user1.equals(currentUserId)) {
+      if (ledger.user2) {
+        otherUser = ledger.user2;
+      } else {
+        // user2 is null, this is a pending friendship
+        // Try to get custom name from friendship
+        let customName = 'Unknown User';
+        try {
+          const Friendship = require('../models/Friendship');
+          const friendship = await Friendship.findOne({
+            ledgerId: ledger._id,
+            friendMobile: ledger.user2Mobile
+          });
+          if (friendship && friendship.customName) {
+            customName = friendship.customName;
+          }
+        } catch (error) {
+          console.log('Could not fetch custom name:', error.message);
+        }
+        
+        otherUser = {
+          _id: null,
+          name: customName,
+          mobile: ledger.user2Mobile || 'Unknown',
+          avatar: '?'
+        };
+      }
+    } else {
+      otherUser = ledger.user1;
+    }
+    
+    console.log('👥 FRIEND SELECTED:', { 
+      id: otherUser._id, 
+      name: otherUser.name, 
+      mobile: otherUser.mobile,
+      isPending: !ledger.user2
+    });
     
     // Calculate balance for current user using mobile number
     const balance = ledger.getBalanceForUser(currentUserMobile);
@@ -107,7 +146,8 @@ router.get('/:id', verifyLedgerAccess, async (req, res) => {
           id: otherUser._id,
           name: otherUser.name,
           mobile: otherUser.mobile,
-          avatar: otherUser.avatar || otherUser.getInitials()
+          avatar: otherUser.avatar || (otherUser.getInitials ? otherUser.getInitials() : '?'),
+          isPending: !ledger.user2
         },
         transactions: formattedTransactions,
         lastUpdated: ledger.lastUpdated,
@@ -146,8 +186,39 @@ router.post('/:id/add', verifyLedgerAccess, async (req, res) => {
 
     // Get the other user's mobile number
     await ledger.populate('user1', 'name mobile avatar');
-    await ledger.populate('user2', 'name mobile avatar');
-    const otherUser = ledger.user1.equals(currentUserId) ? ledger.user2 : ledger.user1;
+    if (ledger.user2) {
+      await ledger.populate('user2', 'name mobile avatar');
+    }
+    
+    let otherUser;
+    if (ledger.user1.equals(currentUserId)) {
+      if (ledger.user2) {
+        otherUser = ledger.user2;
+      } else {
+        // user2 is null, this is a pending friendship
+        // Try to get custom name from friendship
+        let customName = 'Unknown User';
+        try {
+          const Friendship = require('../models/Friendship');
+          const friendship = await Friendship.findOne({
+            ledgerId: ledger._id,
+            friendMobile: ledger.user2Mobile
+          });
+          if (friendship && friendship.customName) {
+            customName = friendship.customName;
+          }
+        } catch (error) {
+          console.log('Could not fetch custom name:', error.message);
+        }
+        
+        otherUser = {
+          mobile: ledger.user2Mobile || 'Unknown',
+          name: customName
+        };
+      }
+    } else {
+      otherUser = ledger.user1;
+    }
     const otherUserMobile = otherUser.mobile;
 
     console.log('💰 TRANSACTION DETAILS:', {
@@ -176,7 +247,7 @@ router.post('/:id/add', verifyLedgerAccess, async (req, res) => {
     const balance = ledger.getBalanceForUser(currentUserMobile);
     
     console.log('💰 NEW BALANCE:', balance);
-    console.log('👥 OTHER USER:', otherUser.name);
+    console.log('👥 OTHER USER:', otherUser.name || 'Unknown User');
 
     // Emit real-time update
     const io = req.app.get('io');
@@ -189,7 +260,7 @@ router.post('/:id/add', verifyLedgerAccess, async (req, res) => {
         id: otherUser._id,
         name: otherUser.name,
         mobile: otherUser.mobile,
-        avatar: otherUser.avatar || otherUser.getInitials()
+        avatar: otherUser.avatar || (otherUser.getInitials ? otherUser.getInitials() : '?')
       },
       transactions: ledger.transactions.map(transaction => ({
         id: transaction._id,
@@ -251,8 +322,39 @@ router.post('/:id/receive', verifyLedgerAccess, async (req, res) => {
 
     // Get the other user's mobile number
     await ledger.populate('user1', 'name mobile avatar');
-    await ledger.populate('user2', 'name mobile avatar');
-    const otherUser = ledger.user1.equals(currentUserId) ? ledger.user2 : ledger.user1;
+    if (ledger.user2) {
+      await ledger.populate('user2', 'name mobile avatar');
+    }
+    
+    let otherUser;
+    if (ledger.user1.equals(currentUserId)) {
+      if (ledger.user2) {
+        otherUser = ledger.user2;
+      } else {
+        // user2 is null, this is a pending friendship
+        // Try to get custom name from friendship
+        let customName = 'Unknown User';
+        try {
+          const Friendship = require('../models/Friendship');
+          const friendship = await Friendship.findOne({
+            ledgerId: ledger._id,
+            friendMobile: ledger.user2Mobile
+          });
+          if (friendship && friendship.customName) {
+            customName = friendship.customName;
+          }
+        } catch (error) {
+          console.log('Could not fetch custom name:', error.message);
+        }
+        
+        otherUser = {
+          mobile: ledger.user2Mobile || 'Unknown',
+          name: customName
+        };
+      }
+    } else {
+      otherUser = ledger.user1;
+    }
     const otherUserMobile = otherUser.mobile;
 
     console.log('💰 TRANSACTION DETAILS:', {
@@ -260,7 +362,7 @@ router.post('/:id/receive', verifyLedgerAccess, async (req, res) => {
       amount,
       description,
       sentBy: otherUserMobile, // Friend sent you money
-      receivedBy: currentUserMobile, // You received the money
+      receivedBy: currentUserId, // You received the money
       addedBy: currentUserId
     });
 
@@ -288,7 +390,7 @@ router.post('/:id/receive', verifyLedgerAccess, async (req, res) => {
         id: otherUser._id,
         name: otherUser.name,
         mobile: otherUser.mobile,
-        avatar: otherUser.avatar || otherUser.getInitials()
+        avatar: otherUser.avatar || (otherUser.getInitials ? otherUser.getInitials() : '?')
       },
       transactions: ledger.transactions.map(transaction => ({
         id: transaction._id,
@@ -342,7 +444,23 @@ router.get('/', authenticateToken, async (req, res) => {
       .populate('user2', 'name mobile avatar');
 
     const formattedLedgers = ledgers.map(ledger => {
-      const otherUser = ledger.user1.equals(currentUserId) ? ledger.user2 : ledger.user1;
+      let otherUser;
+      if (ledger.user1.equals(currentUserId)) {
+        if (ledger.user2) {
+          otherUser = ledger.user2;
+        } else {
+          // user2 is null, this is a pending friendship
+          otherUser = {
+            _id: null,
+            name: 'Unknown User',
+            mobile: ledger.user2Mobile || 'Unknown',
+            avatar: '?'
+          };
+        }
+      } else {
+        otherUser = ledger.user1;
+      }
+      
       const balance = ledger.getBalanceForUser(currentUserMobile);
       
       return {
@@ -351,7 +469,7 @@ router.get('/', authenticateToken, async (req, res) => {
           id: otherUser._id,
           name: otherUser.name,
           mobile: otherUser.mobile,
-          avatar: otherUser.avatar || otherUser.getInitials()
+          avatar: otherUser.avatar || (otherUser.getInitials ? otherUser.getInitials() : '?')
         },
         balance,
         lastUpdated: ledger.lastUpdated,

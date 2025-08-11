@@ -44,7 +44,7 @@ const verifyLedgerAccess = async (req, res, next) => {
     }
 
     // Check if user is part of this ledger
-    if (!ledger.user1.equals(userId) && !ledger.user2.equals(userId)) {
+    if (!ledger.user1.equals(userId) && (ledger.user2 && !ledger.user2.equals(userId))) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
