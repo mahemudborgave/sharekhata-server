@@ -76,15 +76,15 @@ ledgerSchema.methods.calculateBalance = function() {
 
 // Method to add transaction
 ledgerSchema.methods.addTransaction = function(type, amount, sentByMobile, receivedByMobile, addedBy, description = '') {
-  console.log('📝 ADDING TRANSACTION TO MODEL:', {
-    type,
-    amount,
-    sentByMobile,
-    receivedByMobile,
-    addedBy,
-    description,
-    timestamp: new Date()
-  });
+  // console.log('📝 ADDING TRANSACTION TO MODEL:', {
+  //   type,
+  //   amount,
+  //   sentByMobile,
+  //   receivedByMobile,
+  //   addedBy,
+  //   description,
+  //   timestamp: new Date()
+  // });
   
   const transaction = {
     type,
@@ -97,10 +97,10 @@ ledgerSchema.methods.addTransaction = function(type, amount, sentByMobile, recei
   };
   
   this.transactions.push(transaction);
-  console.log('✅ Transaction added to array. Total transactions:', this.transactions.length);
+  // console.log('✅ Transaction added to array. Total transactions:', this.transactions.length);
   
   this.calculateBalance();
-  console.log('✅ Balance calculated. New balance:', this.balance);
+  // console.log('✅ Balance calculated. New balance:', this.balance);
   
   return this.save();
 };
@@ -110,33 +110,33 @@ ledgerSchema.methods.getBalanceForUser = function(userMobile) {
   let userPaid = 0;
   let friendPaid = 0;
   
-  console.log('Calculating balance for user mobile:', userMobile);
-  console.log('Total transactions:', this.transactions.length);
+  // console.log('Calculating balance for user mobile:', userMobile);
+  // console.log('Total transactions:', this.transactions.length);
   
   this.transactions.forEach((transaction, index) => {
-    console.log(`Transaction ${index + 1}:`, {
-      type: transaction.type,
-      amount: transaction.amount,
-      sentBy: transaction.sentBy,
-      receivedBy: transaction.receivedBy,
-      isOwnTransaction: transaction.sentBy === userMobile || transaction.receivedBy === userMobile
-    });
+    // console.log(`Transaction ${index + 1}:`, {
+    //   type: transaction.type,
+    //   amount: transaction.amount,
+    //   sentBy: transaction.sentBy,
+    //   receivedBy: transaction.receivedBy,
+    //   isOwnTransaction: transaction.sentBy === userMobile || transaction.receivedBy === userMobile
+    // });
     
     if (transaction.type === 'added') {
       // Only count 'added' transactions (money paid for shared expenses)
       if (transaction.sentBy === userMobile) {
         userPaid += transaction.amount; // You paid this amount
-        console.log(`You paid: +${transaction.amount}, Total: ${userPaid}`);
+        // console.log(`You paid: +${transaction.amount}, Total: ${userPaid}`);
       } else {
         friendPaid += transaction.amount; // Friend paid this amount
-        console.log(`Friend paid: +${transaction.amount}, Total: ${friendPaid}`);
+        // console.log(`Friend paid: +${transaction.amount}, Total: ${friendPaid}`);
       }
     }
     // Ignore 'received' transactions as they are just settlements
   });
   
   const balance = userPaid - friendPaid;
-  console.log(`Final balance: ${userPaid} - ${friendPaid} = ${balance}`);
+  // console.log(`Final balance: ${userPaid} - ${friendPaid} = ${balance}`);
   
   // Calculate net balance: positive means you get money, negative means you owe money
   return balance;
