@@ -21,6 +21,8 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:8080",
   "https://sharekhata.vercel.app",
+  "https://sharekhata.live",
+  "https://www.sharekhata.live",
   "https://sharekhata-git-main-mahemud95.vercel.app",
   "https://sharekhata-mahemud95.vercel.app",
   ...(process.env.CLIENT_URLS ? process.env.CLIENT_URLS.split(',') : [])
