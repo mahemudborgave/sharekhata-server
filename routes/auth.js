@@ -228,6 +228,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
         id: user._id,
         name: user.name,
         mobile: user.mobile,
+        createdAt: user.createdAt,  
         avatar: user.avatar || user.getInitials()
       }
     });
