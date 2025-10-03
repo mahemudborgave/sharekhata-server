@@ -137,7 +137,7 @@ io.on('connection', (socket) => {
 app.set('io', io);
 
 // MongoDB connection with better error handling
-mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://mahemud:mahemud@cluster0.y3zrjtm.mongodb.net/sharekhata')
+mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('✅ Connected to MongoDB');
   })
