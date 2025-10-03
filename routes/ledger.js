@@ -5,6 +5,11 @@ const { authenticateToken, verifyLedgerAccess } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Health check (server alive)
+router.get('/health', (req, res) => {
+  res.json({ status: 'ok', message: 'Sharekhata API is running 🚀' });
+});
+
 // GET /ledger/:id - Get ledger with transactions
 router.get('/:id', verifyLedgerAccess, async (req, res) => {
   try {
