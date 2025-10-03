@@ -4,11 +4,13 @@ const socketIo = require('socket.io');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
+
 // const rateLimit = require('express-rate-limit'); // Commented out
 require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
 const ledgerRoutes = require('./routes/ledger');
+const personalExpenseRoutes = require('./routes/personalExpense');
 const { authenticateToken } = require('./middleware/auth');
 
 const app = express();
@@ -97,6 +99,9 @@ app.use((err, req, res, next) => {
   
   res.status(500).json({ error: 'Internal server error' });
 });
+
+
+app.use('/personal-expense', authenticateToken, personalExpenseRoutes);
 
 // Routes (unchanged)
 app.use('/auth', authRoutes);
