@@ -18,7 +18,7 @@ router.get('/:id', verifyLedgerAccess, async (req, res) => {
     // console.log('👤 Current User ID:', req.user._id);
     // console.log('👤 Current User Name:', req.user.name);
     // console.log('👤 Current User Mobile:', req.user.mobile);
-    
+
     const { ledger } = req;
     const currentUserId = req.user._id;
     const currentUserMobile = req.user.mobile;
@@ -51,14 +51,14 @@ router.get('/:id', verifyLedgerAccess, async (req, res) => {
     // console.log('  User2 Mobile:', ledger.user2.mobile);
     // console.log('  Current User equals User1?', ledger.user1.equals(currentUserId));
     // console.log('  Current User equals User2?', ledger.user2.equals(currentUserId));
-    
+
     const otherUser = ledger.user1.equals(currentUserId) ? ledger.user2 : ledger.user1;
     // console.log('👥 FRIEND SELECTED:', { id: otherUser._id, name: otherUser.name, mobile: otherUser.mobile });
-    
+
     // Calculate balance for current user using mobile number
     const balance = ledger.getBalanceForUser(currentUserMobile);
     // console.log('💰 CALCULATED BALANCE:', balance);
-    
+
     // Get balance breakdown for debugging
     const breakdown = ledger.getBalanceBreakdown();
     // console.log('🔍 BALANCE BREAKDOWN:', breakdown);
@@ -72,7 +72,7 @@ router.get('/:id', verifyLedgerAccess, async (req, res) => {
       // console.log('  Current User Mobile:', currentUserMobile);
       // console.log('  Is current user sender?', transaction.sentBy === currentUserMobile);
       // console.log('  Is current user receiver?', transaction.receivedBy === currentUserMobile);
-      
+
       const isOwnTransaction = transaction.sentBy === currentUserMobile || transaction.receivedBy === currentUserMobile;
       // console.log('📝 TRANSACTION:', {
       //   id: transaction._id,
@@ -83,7 +83,7 @@ router.get('/:id', verifyLedgerAccess, async (req, res) => {
       //   addedBy: transaction.addedBy.name,
       //   isOwnTransaction: isOwnTransaction
       // });
-      
+
       return {
         id: transaction._id,
         type: transaction.type,
@@ -143,7 +143,7 @@ router.post('/:id/add', verifyLedgerAccess, async (req, res) => {
     // console.log('👤 Current User:', req.user.name);
     // console.log('👤 Current User Mobile:', req.user.mobile);
     // console.log('📦 Request Body:', req.body);
-    
+
     const { ledger } = req;
     const { amount, description = '' } = req.body;
     const currentUserId = req.user._id;
@@ -179,14 +179,14 @@ router.post('/:id/add', verifyLedgerAccess, async (req, res) => {
 
     // Calculate new balance
     const balance = ledger.getBalanceForUser(currentUserMobile);
-    
+
     // console.log('💰 NEW BALANCE:', balance);
     // console.log('👥 OTHER USER:', otherUser.name);
 
     // Emit real-time update
     const io = req.app.get('io');
     const roomName = ledger._id.toString();
-    
+
     const socketData = {
       ledgerId: ledger._id,
       balance,
@@ -213,7 +213,7 @@ router.post('/:id/add', verifyLedgerAccess, async (req, res) => {
       })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
       lastUpdated: ledger.lastUpdated
     };
-    
+
     // console.log('📡 Emitting socket update to room:', roomName);
     io.to(roomName).emit('ledger-updated', socketData);
 
@@ -248,7 +248,7 @@ router.post('/:id/receive', verifyLedgerAccess, async (req, res) => {
     // console.log('👤 Current User:', req.user.name);
     // console.log('👤 Current User Mobile:', req.user.mobile);
     // console.log('📦 Request Body:', req.body);
-    
+
     const { ledger } = req;
     const { amount, description = '' } = req.body;
     const currentUserId = req.user._id;
@@ -285,7 +285,7 @@ router.post('/:id/receive', verifyLedgerAccess, async (req, res) => {
     // Emit real-time update
     const io = req.app.get('io');
     const roomName = ledger._id.toString();
-    
+
     io.to(roomName).emit('ledger-updated', {
       ledgerId: ledger._id,
       balance,
@@ -349,7 +349,7 @@ router.get('/', authenticateToken, async (req, res) => {
     const formattedLedgers = ledgers.map(ledger => {
       const otherUser = ledger.user1.equals(currentUserId) ? ledger.user2 : ledger.user1;
       const balance = ledger.getBalanceForUser(currentUserMobile);
-      
+
       return {
         id: ledger._id,
         friend: {
@@ -367,6 +367,175 @@ router.get('/', authenticateToken, async (req, res) => {
     res.json({ ledgers: formattedLedgers });
   } catch (error) {
     console.error('Get ledgers error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+
+// Add these routes to your existing ledger routes file
+
+// PUT /ledger/:id/transaction/:transactionId - Edit transaction
+router.put('/:id/transaction/:transactionId', verifyLedgerAccess, async (req, res) => {
+  try {
+    const { ledger } = req;
+    const { transactionId } = req.params;
+    const { amount, description } = req.body;
+    const currentUserId = req.user._id;
+    const currentUserMobile = req.user.mobile;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ message: 'Valid amount is required' });
+    }
+
+    // Find the transaction
+    const transaction = ledger.transactions.id(transactionId);
+
+    if (!transaction) {
+      return res.status(404).json({ message: 'Transaction not found' });
+    }
+
+    // Verify the transaction was added by the current user
+    if (!transaction.addedBy.equals(currentUserId)) {
+      return res.status(403).json({ message: 'You can only edit your own transactions' });
+    }
+
+    // Update transaction
+    transaction.amount = amount;
+    transaction.description = description || '';
+
+    await ledger.save();
+
+    // Populate for response
+    await ledger.populate('user1', 'name mobile avatar');
+    await ledger.populate('user2', 'name mobile avatar');
+    await ledger.populate('transactions.addedBy', 'name mobile avatar');
+
+    // Get the other user
+    const otherUser = ledger.user1.equals(currentUserId) ? ledger.user2 : ledger.user1;
+    const balance = ledger.getBalanceForUser(currentUserMobile);
+
+    // Emit real-time update
+    const io = req.app.get('io');
+    const roomName = ledger._id.toString();
+
+    const socketData = {
+      ledgerId: ledger._id,
+      balance,
+      friend: {
+        id: otherUser._id,
+        name: otherUser.name,
+        mobile: otherUser.mobile,
+        avatar: otherUser.avatar || otherUser.getInitials()
+      },
+      transactions: ledger.transactions.map(t => ({
+        id: t._id,
+        type: t.type,
+        amount: t.amount,
+        description: t.description,
+        timestamp: t.timestamp,
+        sentBy: t.sentBy,
+        receivedBy: t.receivedBy,
+        addedBy: {
+          id: t.addedBy._id,
+          name: t.addedBy.name,
+          avatar: t.addedBy.avatar || t.addedBy.getInitials()
+        },
+        isOwnTransaction: t.sentBy === currentUserMobile || t.receivedBy === currentUserMobile
+      })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
+      lastUpdated: ledger.lastUpdated
+    };
+
+    io.to(roomName).emit('ledger-updated', socketData);
+
+    res.json({
+      message: 'Transaction updated successfully',
+      balance,
+      transaction: {
+        id: transaction._id,
+        type: transaction.type,
+        amount: transaction.amount,
+        description: transaction.description,
+        timestamp: transaction.timestamp
+      }
+    });
+  } catch (error) {
+    console.error('Update transaction error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// DELETE /ledger/:id/transaction/:transactionId - Delete transaction
+router.delete('/:id/transaction/:transactionId', verifyLedgerAccess, async (req, res) => {
+  try {
+    const { ledger } = req;
+    const { transactionId } = req.params;
+    const currentUserId = req.user._id;
+    const currentUserMobile = req.user.mobile;
+
+    // Find the transaction
+    const transaction = ledger.transactions.id(transactionId);
+
+    if (!transaction) {
+      return res.status(404).json({ message: 'Transaction not found' });
+    }
+
+    // Verify the transaction was added by the current user
+    if (!transaction.addedBy.equals(currentUserId)) {
+      return res.status(403).json({ message: 'You can only delete your own transactions' });
+    }
+
+    // Remove transaction
+    transaction.deleteOne();
+    await ledger.save();
+
+    // Populate for response
+    await ledger.populate('user1', 'name mobile avatar');
+    await ledger.populate('user2', 'name mobile avatar');
+    await ledger.populate('transactions.addedBy', 'name mobile avatar');
+
+    // Get the other user
+    const otherUser = ledger.user1.equals(currentUserId) ? ledger.user2 : ledger.user1;
+    const balance = ledger.getBalanceForUser(currentUserMobile);
+
+    // Emit real-time update
+    const io = req.app.get('io');
+    const roomName = ledger._id.toString();
+
+    const socketData = {
+      ledgerId: ledger._id,
+      balance,
+      friend: {
+        id: otherUser._id,
+        name: otherUser.name,
+        mobile: otherUser.mobile,
+        avatar: otherUser.avatar || otherUser.getInitials()
+      },
+      transactions: ledger.transactions.map(t => ({
+        id: t._id,
+        type: t.type,
+        amount: t.amount,
+        description: t.description,
+        timestamp: t.timestamp,
+        sentBy: t.sentBy,
+        receivedBy: t.receivedBy,
+        addedBy: {
+          id: t.addedBy._id,
+          name: t.addedBy.name,
+          avatar: t.addedBy.avatar || t.addedBy.getInitials()
+        },
+        isOwnTransaction: t.sentBy === currentUserMobile || t.receivedBy === currentUserMobile
+      })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
+      lastUpdated: ledger.lastUpdated
+    };
+
+    io.to(roomName).emit('ledger-updated', socketData);
+
+    res.json({
+      message: 'Transaction deleted successfully',
+      balance
+    });
+  } catch (error) {
+    console.error('Delete transaction error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 });
