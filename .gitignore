@@ -1,4 +1,46 @@
+# ====== NODE / PACKAGE MANAGER ======
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+*.log
+
+# ====== ENVIRONMENT & SECRETS ======
 .env
-config.json
-secrets.json
+.env.local
+.env.*.local
+env.example   # (optional — remove this line if you want to track it)
+
+# ====== BUILD / CACHE ======
+dist/
+build/
+out/
+.tmp/
+.cache/
+.next/
+.eslintcache
+
+# ====== EDITOR / OS ======
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# ====== DATABASE / LOCAL DATA ======
+dump/
+backups/
+*.bak
+
+# ====== BUN (since you have bun.lock) ======
+.bun/
+bun.lockb   # (keep bun.lock only if you really want to track it)
+
+# ====== MISC ======
+coverage/
+*.pid
+*.seed
+*.pid.lock
 
