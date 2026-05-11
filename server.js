@@ -23,6 +23,8 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:8080",
   "https://sharekhata.vercel.app",
+  "https://sharekhata.in",
+  "https://www.sharekhata.in",
   "https://sharekhata.live",
   "https://www.sharekhata.live",
   "https://sharekhata-git-main-mahemud95.vercel.app",
