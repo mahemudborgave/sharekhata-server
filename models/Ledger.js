@@ -75,17 +75,7 @@ ledgerSchema.methods.calculateBalance = function() {
 };
 
 // Method to add transaction
-ledgerSchema.methods.addTransaction = function(type, amount, sentByMobile, receivedByMobile, addedBy, description = '') {
-  // console.log('📝 ADDING TRANSACTION TO MODEL:', {
-  //   type,
-  //   amount,
-  //   sentByMobile,
-  //   receivedByMobile,
-  //   addedBy,
-  //   description,
-  //   timestamp: new Date()
-  // });
-  
+ledgerSchema.methods.addTransaction = function(type, amount, sentByMobile, receivedByMobile, addedBy, description = '', date = null) {
   const transaction = {
     type,
     amount,
@@ -93,7 +83,7 @@ ledgerSchema.methods.addTransaction = function(type, amount, sentByMobile, recei
     receivedBy: receivedByMobile,
     addedBy,
     description,
-    timestamp: new Date()
+    timestamp: date ? new Date(date) : new Date()
   };
   
   this.transactions.push(transaction);

@@ -16,12 +16,16 @@ const getDateRanges = () => {
   
   const lastMonthStart = new Date(today);
   lastMonthStart.setDate(lastMonthStart.getDate() - 30);
+
+  // End of today in UTC so noon-UTC stored dates are always included
+  const endOfToday = new Date();
+  endOfToday.setUTCHours(23, 59, 59, 999);
   
   return {
-    today: { start: today, end: new Date() },
-    yesterday: { start: yesterday, end: today },
-    lastWeek: { start: lastWeekStart, end: new Date() },
-    lastMonth: { start: lastMonthStart, end: new Date() }
+    today:     { start: today,          end: endOfToday },
+    yesterday: { start: yesterday,      end: today },
+    lastWeek:  { start: lastWeekStart,  end: endOfToday },
+    lastMonth: { start: lastMonthStart, end: endOfToday }
   };
 };
 
@@ -58,20 +62,14 @@ router.get('/transactions', authenticateToken, async (req, res) => {
     const userId = req.user._id;
     const { period, transactionType, limit = 50 } = req.query;
     
-    let startDate = new Date(0); // Beginning of time
-    const endDate = new Date();
+    const query = { userId };
     
     if (period) {
       const ranges = getDateRanges();
       if (ranges[period]) {
-        startDate = ranges[period].start;
+        query.date = { $gte: ranges[period].start, $lte: ranges[period].end };
       }
     }
-    
-    const query = {
-      userId,
-      date: { $gte: startDate, $lte: endDate }
-    };
     
     if (transactionType && ['expense', 'income'].includes(transactionType)) {
       query.transactionType = transactionType;
@@ -101,6 +99,14 @@ router.post('/add', authenticateToken, async (req, res) => {
     if (!description || description.trim() === '') {
       return res.status(400).json({ message: 'Description is required' });
     }
+
+    // Parse YYYY-MM-DD at noon UTC to avoid timezone boundary shifts
+    const parseDateSafe = (d) => {
+      if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        return new Date(`${d}T12:00:00.000Z`);
+      }
+      return d ? new Date(d) : new Date();
+    };
     
     const expense = new PersonalExpense({
       userId,
@@ -108,7 +114,7 @@ router.post('/add', authenticateToken, async (req, res) => {
       description: description.trim(),
       category: category || 'other',
       transactionType: transactionType || 'expense',
-      date: date ? new Date(date) : new Date()
+      date: parseDateSafe(date)
     });
     
     await expense.save();
@@ -140,7 +146,11 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (description !== undefined) expense.description = description.trim();
     if (category !== undefined) expense.category = category;
     if (transactionType !== undefined) expense.transactionType = transactionType;
-    if (date !== undefined) expense.date = new Date(date);
+    if (date !== undefined) {
+      expense.date = /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? new Date(`${date}T12:00:00.000Z`)
+        : new Date(date);
+    }
     
     await expense.save();
     

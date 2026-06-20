@@ -145,7 +145,7 @@ router.post('/:id/add', verifyLedgerAccess, async (req, res) => {
     // console.log('📦 Request Body:', req.body);
 
     const { ledger } = req;
-    const { amount, description = '' } = req.body;
+    const { amount, description = '', date } = req.body;
     const currentUserId = req.user._id;
     const currentUserMobile = req.user.mobile;
 
@@ -155,23 +155,12 @@ router.post('/:id/add', verifyLedgerAccess, async (req, res) => {
     const otherUser = ledger.user1.equals(currentUserId) ? ledger.user2 : ledger.user1;
     const otherUserMobile = otherUser.mobile;
 
-    // console.log('💰 TRANSACTION DETAILS:', {
-    //   type: 'added',
-    //   amount,
-    //   description,
-    //   sentBy: currentUserMobile, // You are sending money
-    //   receivedBy: otherUserMobile, // Friend receives the money
-    //   addedBy: currentUserId
-    // });
-
     if (!amount || amount <= 0) {
-      // console.log('❌ Invalid amount:', amount);
       return res.status(400).json({ message: 'Valid amount is required' });
     }
 
     // Add transaction with new structure
-    // console.log('📝 Adding transaction to database...');
-    await ledger.addTransaction('added', amount, currentUserMobile, otherUserMobile, currentUserId, description);
+    await ledger.addTransaction('added', amount, currentUserMobile, otherUserMobile, currentUserId, description, date);
     // console.log('✅ Transaction added to database');
 
     // Populate for response
@@ -250,7 +239,7 @@ router.post('/:id/receive', verifyLedgerAccess, async (req, res) => {
     // console.log('📦 Request Body:', req.body);
 
     const { ledger } = req;
-    const { amount, description = '' } = req.body;
+    const { amount, description = '', date } = req.body;
     const currentUserId = req.user._id;
     const currentUserMobile = req.user.mobile;
 
@@ -260,21 +249,12 @@ router.post('/:id/receive', verifyLedgerAccess, async (req, res) => {
     const otherUser = ledger.user1.equals(currentUserId) ? ledger.user2 : ledger.user1;
     const otherUserMobile = otherUser.mobile;
 
-    // console.log('💰 TRANSACTION DETAILS:', {
-    //   type: 'received',
-    //   amount,
-    //   description,
-    //   sentBy: otherUserMobile, // Friend sent you money
-    //   receivedBy: currentUserMobile, // You received the money
-    //   addedBy: currentUserId
-    // });
-
     if (!amount || amount <= 0) {
       return res.status(400).json({ message: 'Valid amount is required' });
     }
 
     // Add transaction with new structure
-    await ledger.addTransaction('received', amount, otherUserMobile, currentUserMobile, currentUserId, description);
+    await ledger.addTransaction('received', amount, otherUserMobile, currentUserMobile, currentUserId, description, date);
 
     // Populate for response
     await ledger.populate('transactions.addedBy', 'name mobile avatar');
@@ -379,7 +359,7 @@ router.put('/:id/transaction/:transactionId', verifyLedgerAccess, async (req, re
   try {
     const { ledger } = req;
     const { transactionId } = req.params;
-    const { amount, description } = req.body;
+    const { amount, description, date } = req.body;
     const currentUserId = req.user._id;
     const currentUserMobile = req.user.mobile;
 
@@ -402,6 +382,9 @@ router.put('/:id/transaction/:transactionId', verifyLedgerAccess, async (req, re
     // Update transaction
     transaction.amount = amount;
     transaction.description = description || '';
+    if (date) {
+      transaction.timestamp = new Date(date);
+    }
 
     await ledger.save();
 
