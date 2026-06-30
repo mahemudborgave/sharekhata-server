@@ -13,6 +13,13 @@ const userSchema = new mongoose.Schema({
     unique: true,
     match: /^[6-9]\d{9}$/ // Indian mobile number format
   },
+  email: {
+    type: String,
+    trim: true,
+    lowercase: true,
+    default: null,
+    sparse: true  // allow multiple nulls in unique index
+  },
   password: {
     type: String,
     required: true

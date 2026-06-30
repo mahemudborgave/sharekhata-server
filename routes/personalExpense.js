@@ -4,28 +4,30 @@ const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Helper function to get date ranges
-const getDateRanges = () => {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  
-  const lastWeekStart = new Date(today);
-  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-  
-  const lastMonthStart = new Date(today);
-  lastMonthStart.setDate(lastMonthStart.getDate() - 30);
+// Build date ranges from a client-supplied local date string (YYYY-MM-DD)
+// This avoids server timezone affecting "today/yesterday" boundaries.
+const getDateRanges = (localDateStr) => {
+  // Parse the client's local today as noon UTC so it's timezone-safe
+  let todayMidnight;
+  if (localDateStr && /^\d{4}-\d{2}-\d{2}$/.test(localDateStr)) {
+    const [y, m, d] = localDateStr.split('-').map(Number);
+    todayMidnight = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+  } else {
+    // Fallback: use server UTC date
+    const now = new Date();
+    todayMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  }
 
-  // End of today in UTC so noon-UTC stored dates are always included
-  const endOfToday = new Date();
-  endOfToday.setUTCHours(23, 59, 59, 999);
-  
+  const tomorrowMidnight = new Date(todayMidnight.getTime() + 24 * 60 * 60 * 1000);
+  const yesterdayMidnight = new Date(todayMidnight.getTime() - 24 * 60 * 60 * 1000);
+  const lastWeekMidnight = new Date(todayMidnight.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const lastMonthMidnight = new Date(todayMidnight.getTime() - 30 * 24 * 60 * 60 * 1000);
+
   return {
-    today:     { start: today,          end: endOfToday },
-    yesterday: { start: yesterday,      end: today },
-    lastWeek:  { start: lastWeekStart,  end: endOfToday },
-    lastMonth: { start: lastMonthStart, end: endOfToday }
+    today:     { start: todayMidnight,     end: tomorrowMidnight },
+    yesterday: { start: yesterdayMidnight, end: todayMidnight },
+    lastWeek:  { start: lastWeekMidnight,  end: tomorrowMidnight },
+    lastMonth: { start: lastMonthMidnight, end: tomorrowMidnight }
   };
 };
 
@@ -33,7 +35,7 @@ const getDateRanges = () => {
 router.get('/summary', authenticateToken, async (req, res) => {
   try {
     const userId = req.user._id;
-    const ranges = getDateRanges();
+    const ranges = getDateRanges(req.query.localDate);
     
     const [todayTotal, yesterdayTotal, lastWeekTotal, lastMonthTotal] = await Promise.all([
       PersonalExpense.getTotalByDateRange(userId, ranges.today.start, ranges.today.end, 'expense'),
@@ -65,9 +67,9 @@ router.get('/transactions', authenticateToken, async (req, res) => {
     const query = { userId };
     
     if (period) {
-      const ranges = getDateRanges();
+      const ranges = getDateRanges(req.query.localDate);
       if (ranges[period]) {
-        query.date = { $gte: ranges[period].start, $lte: ranges[period].end };
+        query.date = { $gte: ranges[period].start, $lt: ranges[period].end };
       }
     }
     
@@ -100,10 +102,10 @@ router.post('/add', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Description is required' });
     }
 
-    // Parse YYYY-MM-DD at noon UTC to avoid timezone boundary shifts
+    // Parse YYYY-MM-DD as UTC midnight — matches the midnight-boundary range queries
     const parseDateSafe = (d) => {
       if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
-        return new Date(`${d}T12:00:00.000Z`);
+        return new Date(`${d}T00:00:00.000Z`);
       }
       return d ? new Date(d) : new Date();
     };
@@ -148,7 +150,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (transactionType !== undefined) expense.transactionType = transactionType;
     if (date !== undefined) {
       expense.date = /^\d{4}-\d{2}-\d{2}$/.test(date)
-        ? new Date(`${date}T12:00:00.000Z`)
+        ? new Date(`${date}T00:00:00.000Z`)
         : new Date(date);
     }
     

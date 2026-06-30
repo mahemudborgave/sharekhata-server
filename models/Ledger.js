@@ -36,6 +36,10 @@ const transactionSchema = new mongoose.Schema({
   timestamp: {
     type: Date,
     default: Date.now
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now  // always the actual creation time, never overridden by user-selected date
   }
 });
 
@@ -83,7 +87,8 @@ ledgerSchema.methods.addTransaction = function(type, amount, sentByMobile, recei
     receivedBy: receivedByMobile,
     addedBy,
     description,
-    timestamp: date ? new Date(date) : new Date()
+    timestamp: date ? new Date(date) : new Date(),
+    createdAt: new Date()  // always actual creation time
   };
   
   this.transactions.push(transaction);

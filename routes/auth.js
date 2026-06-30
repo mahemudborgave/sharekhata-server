@@ -3,6 +3,8 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Ledger = require('../models/Ledger');
 const { authenticateToken } = require('../middleware/auth');
+const { sendOTPEmail } = require('../utils/emailService');
+const { generateOTP, saveOTP, verifyOTP, clearOTP } = require('../utils/otpStore');
 
 const router = express.Router();
 
@@ -15,13 +17,78 @@ const generateToken = (userId) => {
   );
 };
 
+// POST /auth/send-otp — send OTP to email for registration or forgot-password
+router.post('/send-otp', async (req, res) => {
+  try {
+    const { email, purpose } = req.body; // purpose: 'registration' | 'forgot-password'
+
+    if (!email || !purpose) {
+      return res.status(400).json({ message: 'Email and purpose are required' });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: 'Invalid email address' });
+    }
+
+    if (!['registration', 'forgot-password'].includes(purpose)) {
+      return res.status(400).json({ message: 'Invalid purpose' });
+    }
+
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+
+    if (purpose === 'registration' && existingUser) {
+      return res.status(400).json({ message: 'Email already registered' });
+    }
+
+    if (purpose === 'forgot-password' && !existingUser) {
+      return res.status(404).json({ message: 'No account found with this email' });
+    }
+
+    // Skip dummy emails for forgot-password
+    if (purpose === 'forgot-password' && existingUser.email.endsWith('@sharekhata.app')) {
+      return res.status(400).json({ message: 'This account was created before email support. Please contact support.' });
+    }
+
+    const otp = generateOTP();
+    saveOTP(email, otp, purpose);
+
+    await sendOTPEmail(email, otp, purpose);
+
+    res.json({ message: 'OTP sent successfully' });
+  } catch (error) {
+    console.error('Send OTP error:', error);
+    res.status(500).json({ message: 'Failed to send OTP. Please try again.' });
+  }
+});
+
+// POST /auth/verify-otp — verify OTP (used before registration to confirm email)
+router.post('/verify-otp', async (req, res) => {
+  try {
+    const { email, otp, purpose } = req.body;
+
+    if (!email || !otp || !purpose) {
+      return res.status(400).json({ message: 'Email, OTP and purpose are required' });
+    }
+
+    const result = verifyOTP(email, otp, purpose);
+    if (!result.valid) {
+      return res.status(400).json({ message: result.reason });
+    }
+
+    res.json({ message: 'OTP verified successfully', verified: true });
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 // POST /auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { name, mobile, password } = req.body;
+    const { name, mobile, email, password, otp } = req.body;
 
-    // Validation
-    if (!name || !mobile || !password) {
+    if (!name || !mobile || !email || !password || !otp) {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
@@ -29,22 +96,29 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
-    // Check if mobile already exists
-    const existingUser = await User.findOne({ mobile });
-    if (existingUser) {
+    // Verify OTP before creating account
+    const otpResult = verifyOTP(email, otp, 'registration');
+    if (!otpResult.valid) {
+      return res.status(400).json({ message: otpResult.reason });
+    }
+
+    // Check mobile & email uniqueness
+    const existingMobile = await User.findOne({ mobile });
+    if (existingMobile) {
       return res.status(400).json({ message: 'Mobile number already registered' });
     }
 
-    // Create new user
-    const user = new User({
-      name,
-      mobile,
-      password
-    });
+    const existingEmail = await User.findOne({ email: email.toLowerCase() });
+    if (existingEmail) {
+      return res.status(400).json({ message: 'Email already registered' });
+    }
 
+    const user = new User({ name, mobile, email: email.toLowerCase(), password });
     await user.save();
 
-    // Generate token
+    // Clear OTP after successful registration
+    clearOTP(email);
+
     const token = generateToken(user._id);
 
     res.status(201).json({
@@ -54,11 +128,47 @@ router.post('/register', async (req, res) => {
         id: user._id,
         name: user.name,
         mobile: user.mobile,
+        email: user.email,
         avatar: user.avatar || user.getInitials()
       }
     });
   } catch (error) {
     console.error('Registration error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// POST /auth/forgot-password — verify OTP then allow password reset
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({ message: 'Email, OTP and new password are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    const otpResult = verifyOTP(email, otp, 'forgot-password');
+    if (!otpResult.valid) {
+      return res.status(400).json({ message: otpResult.reason });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.password = newPassword; // pre-save hook will hash it
+    await user.save();
+
+    clearOTP(email);
+
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Forgot password error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 });
@@ -228,6 +338,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
         id: user._id,
         name: user.name,
         mobile: user.mobile,
+        email: user.email,
         createdAt: user.createdAt,  
         avatar: user.avatar || user.getInitials()
       }

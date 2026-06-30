@@ -51,7 +51,7 @@ personalExpenseSchema.statics.getExpensesByDateRange = async function(userId, st
     userId,
     date: {
       $gte: startDate,
-      $lte: endDate
+      $lt: endDate
     }
   };
   
@@ -70,7 +70,7 @@ personalExpenseSchema.statics.getTotalByDateRange = async function(userId, start
         userId: new mongoose.Types.ObjectId(userId),
         date: {
           $gte: startDate,
-          $lte: endDate
+          $lt: endDate   // exclusive end — use midnight boundaries
         },
         transactionType
       }
